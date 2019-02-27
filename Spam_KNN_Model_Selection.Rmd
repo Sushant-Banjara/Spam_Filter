@@ -1,0 +1,117 @@
+---
+title: "KNN_Report"
+output: github_document
+---
+
+Being a simple and fast machine learning algorithm, KNN is one of the most used ML algorithm. I, here use KNN alogirthm to classify a given email as spam or non-spam based 57 different textual characterstics 3220 emails.The traininig data is popular spambase dataset available at (https://archive.ics.uci.edu/ml/datasets/Spambase). Based on this data set we try to find out an optimum value of K in KNN classification and use it to classify emails saved as .txt files
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#Import Libraries
+library('FNN')
+library ('caret')
+library ('dplyr')
+library ('ggplot2')
+
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+#Set working directory
+setwd('C:/Users/spb65/Desktop/Applied Machine Learning')
+
+#Read the data
+train = read.csv('spam_train.csv')
+
+#####This part calculates the percentage of NA in each Column###
+################################################################
+Perc_na = function(data){
+#Get the number of rows in the dataframe
+Rows = nrow(data)
+#Get the name of the columns
+Cols = length(data)
+for (i in c(1:Cols)){
+  Name = names(data[i])
+  NAs = sum(is.na(data[, i]))
+  Percent = (NAs/Rows)*100
+  if (Percent>0)
+    print (paste('The percent of NA in', Name, 'is', Percent, sep= ' '))
+}
+}
+#####################################################################
+#####################################################################
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+Perc_na(train)
+```
+ As we can see one column in the dataset has a very high percentage of NA, and if we remove rows with NA  we will lose a significant proportion of data. Another possible way could be removing the columns with high proportion mf NA. However, capital_run_length_average may be an important variable so we opt to impute new data based on KNN classifiaction itself.
+ 
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+#Remove the response variable from the data impute and add the response variable
+library('DMwR')
+toimpute = subset(train, select = -c(spam))
+Imputed = knnImputation(toimpute, k =15, scale=T)
+Imputed$spam = train$spam
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+##Print he summary of imputed and non imputed data to check if they are comparable
+print(summary (Imputed$capital_run_length_average))
+print(summary (train$capital_run_length_average))    
+
+```
+As we can see, imputation removed the 661 NAs from the data however there is no significant difference in the summary statistics.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+##Write function to calculate accuracy rate of the KNN classifier##
+#############Function Starts Here##############################
+error_calc = function(classifier, label){k =0 
+for (j in 1:length(classifier)){
+  if (classifier[j]==label[j])
+    k = k+1
+}
+return(k/length(classifier))}
+#############Function Ends Here################################
+###############################################################
+
+##Create a data frame with three 50 rows and three columns
+error_rate = data.frame (matrix(ncol = 3, nrow=50))
+```
+
+```{r}
+for (i in 1:50){
+  
+  library(dplyr)
+  train = sample_frac(Imputed, 0.7)
+  sid<-as.numeric(rownames(train)) # because rownames() returns character
+  test = Imputed[-sid,]
+  
+  classifier1 = knn(train[, -c(58)], train[, -c(58)], train$spam, k = i, algorithm=c("kd_tree"))
+  classifier2 = knn(train[, -c(58)], test[, -c(58)], train$spam, k = i, algorithm=c("kd_tree"))
+  
+  ##Enter the error rates and number of k in the empty data frame by calling error_rate function
+  error_rate$X1[i] = i
+  error_rate$X2[i] = error_calc(classifier1, train$spam)
+  error_rate$X3[i] = error_calc(classifier2, test$spam)
+}
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+plot(error_rate$X1, error_rate$X2, col = 'blue', main = 'Error Rate vs. Number of K (Training Data)', xlab = 'Number of K', ylab = 'Accuracy rate' )
+
+plot(error_rate$X1, error_rate$X3, col = 'red',  main = 'Error Rate vs. Number of K (Test Data)', xlab = 'Number of K', ylab = 'Accuray rate' )
+```
+
+The nature of the Accuracy vs K plot defies the intuition of overfitting. I had expected that that the accuracy for test data would reach maximum at a K value distant from 1, but it is not so. I therefore, conducted 10 fold cross validation to check if the result is any different.
+
+
+```{r}
+library('caret')
+Imputed$spam = factor(Imputed$spam)
+kcontrol = trainControl(method = 'cv', number = 2)
+fit = train (spam ~ ., method ='knn', tuneGrid = expand.grid(k = 1:50), trControl = kcontrol, metric ='Accuracy', data =Imputed)
+fit
+plot(fit)
+```
+
+Surprisingly, even the K-fold cross validation shows that the model performs best at k = 1. However, choosing k =1 is very much against the idea of difference in nature of accuracy in training and test data caused due to overfitting. I, therefore opt to choose 3 or 7 as the optimal value of k. 
